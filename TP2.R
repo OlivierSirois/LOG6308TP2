@@ -1,8 +1,34 @@
-m = as.matrix(read.table("citeseer.rtable"))
+m = as.matrix(read.table("citeseer.rtable", check.names=F))
 library("expm")
+library("dplyr")
 d <- 0.85
 pr <- rep(1, dim(m)[1])
 
+## Cosinus entre un vecteur v et chaque colonne dela matrice m
+cosinus.vm <- function(v,m) {
+  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  m[is.na(m)] <- 0
+  v[is.na(v)] <- 0 ;
+  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2))) 
+}
+
+#Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
+corr.vm <- function(v,m) {
+  # on centre les valeurs de la matrice m en fonction de la moyenne, on la renomme m.centre
+  v.i <- rowMeans(m[,], na.rm=T)
+  # on enleve les NA
+  m[is.na(m)] <- 0
+  m.centre <- m - v.i
+  # on centre le vecteur v en fonction de sa moyenne
+  v.index <- v
+  v.index[is.na(v)] <- 0
+  v.index <- v.index - mean(v, na.rm=T)
+  # on retourne ensuite un vecteur correspondant entre le vecteur v et sa correlation avec chaque rangers de m
+  return( (v.index%*%t(m.centre))/(sqrt(sum(v.index^2) * rowSums(m.centre^2))))
+}
+
+#cette fonction fais la somme de toutes les puissance de la matrice m allant de 0 jusqu'a n
 sum.powers.matrix <- function(m, n) {
   powers <- c(1:n)
   res <- Reduce('+', lapply(powers, function(x) m %^% x))
@@ -11,11 +37,14 @@ sum.powers.matrix <- function(m, n) {
   return(res)
 }
 
+#on enleve toutes les autoreferences dans la matrice referentielle. Ce probleme survient lorsqu'on fait une addition des différentes puissances de matrices. 
+#ce comportement est a évité car sa donne de l'importance artificielle à notre cible lorsqu'elle est référencé elle même par sa référence.
 remove.autoreferences <- function(m) {
   res <- m
   diag(res) <- 0
 }
 
+# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001 
 page.rank.until.stab <- function(m, d, pr){
   pr.next <- page.rank(m, d, pr)
   while(abs(mean(pr.next-pr)) > 0.0001){
@@ -25,6 +54,8 @@ page.rank.until.stab <- function(m, d, pr){
   return (pr)
 }
 
+#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une 
+# article non référencé) on remplace ensuite la valeur qui sera égale a Inf, par un 0
 page.rank <- function(m, d, pr){
   denum <- (pr/colSums(m))
   denum[denum == Inf] <- 0
@@ -32,11 +63,6 @@ page.rank <- function(m, d, pr){
   #print(pr[450])
   return(pr)
 }
-pr <- page.rank.until.stab(m, d, pr)
-print(pr)
-
-
-
 
 pagerank.iteration <- function(refs, n, d, pr) {
   # Number of articles
@@ -50,9 +76,49 @@ pagerank.iteration <- function(refs, n, d, pr) {
   
   return(pr.res)
 }
+# On calcule notre domaine S comme étant tout les article sont référencés par notre origine. Pour faire cela, on regarde ceux qui on une valeur positive dans notre matrice référentielle
+S <- which(m["422908",]==1)
+# Pour le domaine S prime, nous voulons aussi rajouter les références des références. Pour faire cela, nous faisont que prendre la somme des deux première puissance de la
+# matrice référentielle. C'est a dire, la matrice référentielle elle-même et la deuxième puissance.
+S.prime <- which(sum.powers.matrix(m,2)["422908",]==1)
 
 
-m <- matrix(c(0,1,1,0,0,1,1,0,0),3)
-pr <- rep(1,3)
+#On calcule le pagerank de tout nos articles (pas très long)
+pr <- page.rank.until.stab(m, d, pr)
+#on place les rankings PageRank de notre domaine dans un vecteur
+S.rankings <- pr[S]
+#pour le domaine S prime
+S.prime.rankings <- pr[S.prime]
+#On crée un dataframe avec nos données
+S.dat <- data.frame(S.rankings, S)
+S.dat$article = rownames(S.dat)
+#même chose pour le domaine S prime 
+S.prime.dat <- data.frame(S.prime.rankings, S.prime)
+S.prime.dat$article = rownames(S.prime.dat)
+#on effectue un trie sur nos valeurs, on sort celles qui sont les plus hautes en premier
+S.best <- S.dat %>% select(S.rankings, S, article) %>% arrange(desc(S.rankings, arr.ind=T))
+#même chose pour le domaine S prime
+S.prime.best <- S.prime.dat %>% select(S.prime.rankings, S.prime, article) %>% arrange(desc(S.prime.rankings, arr.ind=T))
 
-m2 <- sum.powers.matrix(m,2)
+## on calcule nos coefficients de correlation et du cosinus
+
+corr.ratings <- corr.vm(m["422908", ], m[S,])
+cos.ratings <- cosinus.vm(m["422908",], t(m[S,]))
+
+# on remplace les NaN par 0
+corr.ratings[is.nan(corr.ratings)] <- 0
+cos.ratings[is.nan(cos.ratings)] <- 0
+
+# on prends nos etiquettes
+labels.corr <- colnames(corr.ratings)
+labels.cos <- colnames(cos.ratings)
+
+# on cree nos dataframes
+df.corr <- data.frame(corr = as.vector(corr.ratings), article = labels.corr)
+df.cos <- data.frame(cos = as.vector(cos.ratings), article = labels.cos)
+
+#on trie
+df.best.cos <- df.cos %>% select(cos, article) %>% arrange(desc(cos, arr.ind=T))
+df.best.corr <- df.corr %>% select(corr, article) %>% arrange(desc(corr, arr.ind=T))
+
+#print(cl)

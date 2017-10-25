@@ -42,6 +42,7 @@ sum.powers.matrix <- function(m, n) {
 remove.autoreferences <- function(m) {
   res <- m
   diag(res) <- 0
+  return (res)
 }
 
 # Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001 
@@ -76,11 +77,22 @@ pagerank.iteration <- function(refs, n, d, pr) {
   
   return(pr.res)
 }
+
+#diag(m) <- 0
+
+
 # On calcule notre domaine S comme étant tout les article sont référencés par notre origine. Pour faire cela, on regarde ceux qui on une valeur positive dans notre matrice référentielle
 S <- which(m["422908",]==1)
 # Pour le domaine S prime, nous voulons aussi rajouter les références des références. Pour faire cela, nous faisont que prendre la somme des deux première puissance de la
 # matrice référentielle. C'est a dire, la matrice référentielle elle-même et la deuxième puissance.
-S.prime <- which(sum.powers.matrix(m,2)["422908",]==1)
+m.prime <- sum.powers.matrix(m,2)
+
+#on enleve les auto-references
+diag(m.prime) <- 0
+
+S.prime <- which(m.prime["422908",]==1)
+
+#S.prime <- remove.autoreferences(S.prime)
 
 
 #On calcule le pagerank de tout nos articles (pas très long)
@@ -121,4 +133,9 @@ df.cos <- data.frame(cos = as.vector(cos.ratings), article = labels.cos)
 df.best.cos <- df.cos %>% select(cos, article) %>% arrange(desc(cos, arr.ind=T))
 df.best.corr <- df.corr %>% select(corr, article) %>% arrange(desc(corr, arr.ind=T))
 
+print.data.frame(df.best.cos)
+print.data.frame(df.best.corr)
+
+print.data.frame(S.prime.best)
+print.data.frame(S.best)
 #print(cl)

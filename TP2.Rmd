@@ -1,6 +1,8 @@
 ---
-    title: "TP2"
-    output: html_document
+title: "TP2"
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ``` {r include = FALSE}
@@ -123,7 +125,7 @@ page.rank.until.stab <- function(m, d, pr){
 
 Read source file and turn it into a matrix (for later work).
 
-``` {r}
+```{r}
 
 # Read source file
 data <- read.table("citeseer.rtable")
@@ -135,7 +137,7 @@ references <- as.matrix(data)
 
 Example of PageRank computations with a simple reference matrix.
 
-``` {r}
+```{r}
 m <- matrix(c(0,1,1,0,0,1,1,0,0),3)
 ```
 
@@ -145,17 +147,17 @@ print(m)
 
 Initial PageRank values:
 
-``` {r}
+```{r}
 pr <- rep(1,3)
 ```
 
-``` {r echo = FALSE}
+```{r echo = FALSE}
 print(pr)
 ```
 
 3 PageRank iterations:
 
-``` {r}
+```{r}
 
 pr <- page.rank(m, d,  pr)
 print(pr)
@@ -204,14 +206,22 @@ print(S)
 print(S.prime)
 ```
 
-We then continue with on with calculating the PageRank of all our articles.
+We then continue with on with calculating the PageRank of all our articles. We do this globally and locally.
 
 ```{r}
 #On calcule le pagerank de tout nos articles (pas très long)
 pr <- page.rank.until.stab(m, d, pr)
+
+pr.S <- rep(1, dim(m[S,S])[1])
+#on calcule le page rank local du domaine S
+pr.S <- page.rank.until.stab(m[S,S], d, pr.S)
+#et apres pour S prime
+pr.S.prime <- rep(1, dim(m[S.prime,S.prime])[1])
+
+pr.S.prime <- page.rank.until.stab(m[S.prime, S.prime], d, pr.S.prime)
 ```
 
-And then we extract from all the Page Ranks, the one that we are interested in, being the ones in the $S_{primary}$ domain and the $S'$ domain.
+And then we extract from all the Page Ranks, the one that we are interested in, being the ones in the $S_{primary}$ domain and the $S'$ domain. We only do this in the global PageRanks since all the data from the local PageRanks are to be used for recommendations.
 
 ```{r}
 #on place les rankings PageRank de notre domaine dans un vecteur
@@ -231,13 +241,26 @@ print.data.frame(S.dat)
 after sorting all the values, we can determine which ones we will recommend.
 
 ```{r}
+#On crée un dataframe avec nos données
+S.loc.dat <- data.frame(pr.S)
+S.loc.dat$article <- rownames(pr.S)
+#meme chose pour S prime (local)
+S.prime.loc.dat <- data.frame(pr.S.prime)
+S.prime.loc.dat$article <- rownames(pr.S.prime)
+#on trie pour S et S prime
+S.loc.best <- S.loc.dat %>% select(pr.S, article) %>% arrange(desc(pr.S, arr.ind=T))
+S.prime.loc.best <- S.prime.loc.dat %>% select(pr.S.prime, article) %>% arrange(desc(pr.S.prime, arr.ind=T))
+
 #on effectue un trie sur nos valeurs, on sort celles qui sont les plus hautes en premier
 S.best <- S.dat %>% select(S.rankings, S, article) %>% arrange(desc(S.rankings, arr.ind=T))
 #même chose pour le domaine S prime
 S.prime.best <- S.prime.dat %>% select(S.prime.rankings, S.prime, article) %>% arrange(desc(S.prime.rankings, arr.ind=T))
-
+print("Version Globales")
 head(S.best)
 head(S.prime.best)
+print("Versions Locales")
+head(S.loc.best)
+head(S.prime.loc.best)
 ```
 
 #Question 2
@@ -276,9 +299,11 @@ print.data.frame(df.best.corr)
 #Interpretation
 Judging from the recommendation of all our possible scenarios. We can safely assume that all of our recommendations are admissible. Admissible being that they are related to the original article in question. 
 
-We can see that the article 155792 is one of the few that figures in all our recommendations. It is recommended 3rd by both our item-item approaches and is recommended by the two domains of the PageRanks approaches. This articles is about logics and models of real time, while the original article is about symbolic model checking for real-time systems. This is a very good recommendation.
+We can see that the article 155792 is one of the few that figures in all our recommendations. It is recommended 3rd by both our item-item approaches and is recommended by the two domains of the PageRanks (global and local) approaches. This articles is about logics and models of real time, while the original article is about symbolic model checking for real-time systems. This is a very good recommendation.
 
-Now, if we look at our top recommendation of our $S'$ domain, we can see that the recommendation is a little bit different. The article recommended is about minimal state graph generation. While not being closely related to real-time systems, it might be relevant through the mathematical principle found in the article itself and may be a very good recommendation based on what the reader is actually trying to accomplish.
+It is also a good time to mention the differences observe between the Local PageRanks and the Global PageRanks. The difference being that the computation of the scores for the local versions are done on only the domain specifically whilst the global version is done on all the articles of the matrix. Intuitively, it should yield similar results. Although in reality, it does not. We can see that the recommandations based on $S$ and $S'$ are almost exactly the same while the scores on the global version of $S$ and $S'$ are very different. This is due to the fact that the local version doesn't take into account the references of article that aren't necessarily in the domain. This means that the local version of PageRanks scores on the popularity of the article in the domain only, while the global version scores on the popularity versus all of the article in the database but we only look at the articles in the domain for recommendation.
+
+Now, if we look at our top recommendation of our $S'$ domain of the global, we can see that the recommendation is a little bit different. The article recommended is about minimal state graph generation. It is recommending this article because while not being popular in the domain, it is a very general topic and very useful article in all sorts of disciplines thus demonstrating an advantage of the global pagerank versus the local pagerank. While not being closely related to real-time systems, it might be relevant through the mathematical principles found in the article itself and may be a very good recommendation based on what the reader is actually trying to accomplish.
 
 On the other hand, The top recommendations of our item-item approaches are still about real-time systems while being part of our domains $S$ and by extent $S'$
 

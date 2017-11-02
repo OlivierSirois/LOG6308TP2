@@ -83,6 +83,14 @@ pagerank.iteration <- function(refs, n, d, pr) {
 
 # On calcule notre domaine S comme étant tout les article sont référencés par notre origine. Pour faire cela, on regarde ceux qui on une valeur positive dans notre matrice référentielle
 S <- which(m["422908",]==1)
+#print(S)
+#print(m[S,S])
+
+
+pr.S <- rep(1, dim(m[S,S])[1])
+#on calcule le page rank local du domaine S
+pr.S <- page.rank.until.stab(m[S,S], d, pr.S)
+#print(pr.S)
 # Pour le domaine S prime, nous voulons aussi rajouter les références des références. Pour faire cela, nous faisont que prendre la somme des deux première puissance de la
 # matrice référentielle. C'est a dire, la matrice référentielle elle-même et la deuxième puissance.
 m.prime <- sum.powers.matrix(m,2)
@@ -91,6 +99,10 @@ m.prime <- sum.powers.matrix(m,2)
 diag(m.prime) <- 0
 
 S.prime <- which(m.prime["422908",]==1)
+#on calcule le page rank du domaine S prime
+pr.S.prime <- rep(1, dim(m[S.prime,S.prime])[1])
+
+pr.S.prime <- page.rank.until.stab(m[S.prime, S.prime], d, pr.S.prime)
 
 #S.prime <- remove.autoreferences(S.prime)
 
@@ -101,7 +113,19 @@ pr <- page.rank.until.stab(m, d, pr)
 S.rankings <- pr[S]
 #pour le domaine S prime
 S.prime.rankings <- pr[S.prime]
+
+
 #On crée un dataframe avec nos données
+S.loc.dat <- data.frame(pr.S)
+S.loc.dat$article <- rownames(pr.S)
+#meme chose pour S prime (local)
+S.prime.loc.dat <- data.frame(pr.S.prime)
+S.prime.loc.dat$article <- rownames(pr.S.prime)
+#on trie pour S et S prime
+S.loc.best <- S.loc.dat %>% select(pr.S, article) %>% arrange(desc(pr.S, arr.ind=T))
+S.prime.loc.best <- S.prime.loc.dat %>% select(pr.S.prime, article) %>% arrange(desc(pr.S.prime, arr.ind=T))
+
+# on effectue les meme calcules pour PageRank de maniere globale
 S.dat <- data.frame(S.rankings, S)
 S.dat$article = rownames(S.dat)
 #même chose pour le domaine S prime 
@@ -133,9 +157,9 @@ df.cos <- data.frame(cos = as.vector(cos.ratings), article = labels.cos)
 df.best.cos <- df.cos %>% select(cos, article) %>% arrange(desc(cos, arr.ind=T))
 df.best.corr <- df.corr %>% select(corr, article) %>% arrange(desc(corr, arr.ind=T))
 
-print.data.frame(df.best.cos)
-print.data.frame(df.best.corr)
+#print.data.frame(df.best.cos)
+#print.data.frame(df.best.corr)
 
-print.data.frame(S.prime.best)
-print.data.frame(S.best)
+#print.data.frame(S.prime.best)
+#print.data.frame(S.best)
 #print(cl)

@@ -1,60 +1,260 @@
-# Load libraries
+m = as.matrix(read.table("citeseer.rtable", check.names=F))
 library("expm")
+library("dplyr")
+d <- 0.85
+pr <- rep(1, dim(m)[1])
 
-# Computes the sum of n first powers of matrix m.
-# n.d is a damping factor applied to the powers of m.
-# Example : sum.powers.matrix(m, 3, 2) returns:
-# m + (1 / (2^2)) * m^2 + (1 / (3^2)) * m^3
-sum.powers.matrix <- function(m, n, n.d) {
-    powers <- c(1:n)
-    res <- Reduce('+', lapply(powers, function(x) (1 / (x ^ n.d)) * (m %^% x)))
-
-    return(res)
+## Cosinus entre un vecteur v et chaque colonne dela matrice m
+cosinus.vm <- function(v,m) {
+  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  m[is.na(m)] <- 0
+  v[is.na(v)] <- 0 ;
+  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
 }
 
-# Removes all the autoreferences in matrix m (ie puts the diagonal to 0).
+#Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
+corr.vm <- function(v,m) {
+  # on centre les valeurs de la matrice m en fonction de la moyenne, on la renomme m.centre
+  v.i <- rowMeans(m[,], na.rm=T)
+  # on enleve les NA
+  m[is.na(m)] <- 0
+  m.centre <- m - v.i
+  # on centre le vecteur v en fonction de sa moyenne
+  v.index <- v
+  v.index[is.na(v)] <- 0
+  v.index <- v.index - mean(v, na.rm=T)
+  # on retourne ensuite un vecteur correspondant entre le vecteur v et sa correlation avec chaque rangers de m
+  return( (v.index%*%t(m.centre))/(sqrt(sum(v.index^2) * rowSums(m.centre^2))))
+}
+
+#cette fonction fais la somme de toutes les puissance de la matrice m allant de 0 jusqu'a n
+sum.powers.matrix <- function(m, n) {
+  powers <- c(1:n)
+  res <- Reduce('+', lapply(powers, function(x) m %^% x))
+  res[res > 1] <- 1
+
+  return(res)
+}
+
+#on enleve toutes les autoreferences dans la matrice referentielle. Ce probleme survient lorsqu'on fait une addition des différentes puissances de matrices.
+#ce comportement est a évité car sa donne de l'importance artificielle à notre cible lorsqu'elle est référencé elle même par sa référence.
 remove.autoreferences <- function(m) {
-    res <- m
-    diag(res) <- 0
-
-    return(res)
+  res <- m
+  diag(res) <- 0
 }
 
-# Computes an iteration of the PageRank algorithm.
-# Parameters:
-#   - refs: the references matrix
-#   - n: the number of powers of refs to consider (ie the depth of references)
-#   - d: the PageRank damping factor
-#   - n.d: the damping factor for powers of refs (see function sum.powers.matrix)
-#   - pr: the current PageRank values
-pagerank.iteration <- function(refs, n, d, n.d, pr) {
-    # Number of articles
-    n.articles <- dim(refs)[1]
-
-    # n-level references
-    m <- sum.powers.matrix(refs, n, n.d)
-
-    # remove auto-references
-    m <- remove.autoreferences(m)
-
-    # Compute PageRank
-    pr.res <- (1-d)/n.articles + (d * (m %*% (pr/colSums(m))))
-
-    return(pr.res)
+# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001
+page.rank.until.stab <- function(m, d, pr){
+  pr.next <- page.rank(m, d, pr)
+  while(abs(mean(pr.next-pr)) > 0.0001){
+    pr <- pr.next
+    pr.next <- page.rank(m,d,pr)
+  }
+  return (pr)
 }
 
-# Read source file
-data <- read.table("citeseer.rtable")
+#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une
+# article non référencé) on remplace ensuite la valeur qui sera égale a Inf, par un 0
+page.rank <- function(m, d, pr){
+  denum <- (pr/colSums(m))
+  denum[denum == Inf] <- 0
+  (pr <- (1-d)/3 + (d * (m %*%denum)))
+  #print(pr[450])
+  return(pr)
+}
 
-# Cast data to matrix
-references <- as.matrix(data)
+pagerank.iteration <- function(refs, n, d, pr) {
+  # Number of articles
+  n.articles <- dim(refs)[1]
 
-m <- matrix(c(0,1,1,0,0,1,1,0,0),3)
-pr <- rep(1,3)
+  # n-level references
+  m <- sum.powers.matrix(refs, n)
 
-pr <- pagerank.iteration(m, 2, 0.85, 2, pr)
+  # Compute PageRank
+  pr.res <- (1-d)/n.articles + (d * (m %*% (pr/colSums(m))))
 
-pr <- pagerank.iteration(m, 2, 0.85, 2, pr)
+  return(pr.res)
+}
+# # On calcule notre domaine S comme étant tout les article sont référencés par notre origine. Pour faire cela, on regarde ceux qui on une valeur positive dans notre matrice référentielle
+# S <- which(m["422908",]==1)
+# # Pour le domaine S prime, nous voulons aussi rajouter les références des références. Pour faire cela, nous faisont que prendre la somme des deux première puissance de la
+# # matrice référentielle. C'est a dire, la matrice référentielle elle-même et la deuxième puissance.
+# S.prime <- which(sum.powers.matrix(m,2)["422908",]==1)
+#
+#
+# #On calcule le pagerank de tout nos articles (pas très long)
+# pr <- page.rank.until.stab(m, d, pr)
+# #on place les rankings PageRank de notre domaine dans un vecteur
+# S.rankings <- pr[S]
+# #pour le domaine S prime
+# S.prime.rankings <- pr[S.prime]
+# #On crée un dataframe avec nos données
+# S.dat <- data.frame(S.rankings, S)
+# S.dat$article = rownames(S.dat)
+# #même chose pour le domaine S prime
+# S.prime.dat <- data.frame(S.prime.rankings, S.prime)
+# S.prime.dat$article = rownames(S.prime.dat)
+# #on effectue un trie sur nos valeurs, on sort celles qui sont les plus hautes en premier
+# S.best <- S.dat %>% select(S.rankings, S, article) %>% arrange(desc(S.rankings, arr.ind=T))
+# #même chose pour le domaine S prime
+# S.prime.best <- S.prime.dat %>% select(S.prime.rankings, S.prime, article) %>% arrange(desc(S.prime.rankings, arr.ind=T))
+#
+# ## on calcule nos coefficients de correlation et du cosinus
+#
+# corr.ratings <- corr.vm(m["422908", ], m[S,])
+# cos.ratings <- cosinus.vm(m["422908",], t(m[S,]))
+#
+# # on remplace les NaN par 0
+# corr.ratings[is.nan(corr.ratings)] <- 0
+# cos.ratings[is.nan(cos.ratings)] <- 0
+#
+# # on prends nos etiquettes
+# labels.corr <- colnames(corr.ratings)
+# labels.cos <- colnames(cos.ratings)
+#
+# # on cree nos dataframes
+# df.corr <- data.frame(corr = as.vector(corr.ratings), article = labels.corr)
+# df.cos <- data.frame(cos = as.vector(cos.ratings), article = labels.cos)
+#
+# #on trie
+# df.best.cos <- df.cos %>% select(cos, article) %>% arrange(desc(cos, arr.ind=T))
+# df.best.corr <- df.corr %>% select(corr, article) %>% arrange(desc(corr, arr.ind=T))
 
-pr <- pagerank.iteration(m, 2, 0.85, 2, pr)
-print(pr)
+#print(cl)
+
+# ------------------- Cross-validation: item-item method -----------------------
+
+#Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
+corr.vm <- function(v,m) {
+  # on centre les valeurs de la matrice m en fonction de la moyenne, on la renomme m.centre
+  v.i <- rowMeans(m[,], na.rm=T)
+  # on enleve les NA
+  m[is.na(m)] <- 0
+  m.centre <- m - v.i
+  # on centre le vecteur v en fonction de sa moyenne
+  v.index <- v
+  v.index[is.na(v)] <- 0
+  v.index <- v.index - mean(v, na.rm=T)
+  # on retourne ensuite un vecteur correspondant entre le vecteur v et sa correlation avec chaque rangers de m
+  return( (v.index%*%t(m.centre))/(sqrt(sum(v.index^2) * rowSums(m.centre^2))))
+}
+
+cosinus.vm <- function(v,m) {
+# On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  m[is.na(m)] <- 0
+  v[is.na(v)] <- 0 ;
+# On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
+}
+
+min.nindex <- function(m, n=11) {
+  i <- order(m)
+  return(i[1:n])
+}
+
+# predict <- function(refs, article) {
+#
+#   dist.article <- sqrt(colSums(refs[,article] - refs)^2)
+#
+#   i.distance.article <- min.nindex(dist.article)[-1]
+#
+#   # print(i.distance.article)
+#   print(sapply(i.distance.article, function(x) cosinus.vm(refs[, article], matrix(refs[,x]))))
+
+  # corr.articles <- sapply(i.distance.article, function(x) corr.vm(refs[,article], refs[,x]))
+  #
+  # print(corr.articles)
+
+
+  # # Vecteur contenant les distances entre Star Trek et les autres films
+  # distance.450 <- sqrt(colSums(ratings[,450] - ratings)^2)
+  #
+  #
+  # # Calcul des 20 voisins les plus proches
+  # n.voisins <- 20 + 1
+  # votes.communs <- colSums((ratings[,450] * ratings) > 0) # nombre de votes communs
+  # #print(which(votes.communs==0))
+  # i.distance.450 <- min.nindex(distance.450, n.voisins)
+  # # votes.communs[i.distance.450]
+  #
+  # i.distance.450 <- i.distance.450[i.distance.450 != 450]
+  # # Moyenne des votes par film (sans les NA)
+  # i.mean.item <- matrix(colMeans(m[], na.rm=TRUE))
+  # i.450.mean <- mean(m[,450], na.rm=T)
+  #
+  # # on sort nos predictions en utilisant la formule apprise dans le cours
+  # res <- sapply(unique(1:943), function(x) predict.vote(t(m[,i.distance.450]), i.450.mean, x, rowMeans(t(m[,i.distance.450]), na.rm = T), cosinus.vm(m[,450], m[,i.distance.450])))
+  #
+  # return(res)
+# }
+
+predict.vote <- function(m, useravg, item, user.avg, cor){ # pour utilisateur-utilisateur
+  m.mod <- m[,item]
+  user.avg.mod <- user.avg
+  cor.mod <- cor
+  correction.fact <- 1/sum(abs(cor[-which(is.na(m.mod))]))
+  v1 <- m.mod[-which(is.na(m.mod))] - user.avg.mod[-which(is.na(m.mod))]
+  predicted.voted <- useravg + correction.fact*  sum(cor.mod[-which(is.na(m.mod))]*v1)
+  return(abs(predicted.voted))
+}
+
+predict <- function(m, item) {
+
+  # Vecteur contenant les indices des utilisateurs n'ayant pas indiqué de vote
+  # pour Star Trek
+
+  users.no.vote.item = which(m[,item] %in% NA)
+  # print(users.no.vote.item)
+
+  # Vecteur contenant les distances entre Star Trek et les autres films
+  distance.item <- sqrt(colSums(m[,item] - m, na.rm=T)^2)
+
+
+  # Calcul des 20 voisins les plus proches
+  n.voisins <- 20 + 1
+  votes.communs <- colSums((m[,item] * m) > 0, na.rm=T) # nombre de votes communs
+  #print(which(votes.communs==0))
+  i.distance.item <- min.nindex(distance.item, n.voisins)
+  # votes.communs[i.distance.450]
+
+  i.distance.item <- i.distance.item[i.distance.item != item]
+  # Moyenne des votes par film (sans les NA)
+  i.mean.item <- matrix(colMeans(m[], na.rm=TRUE))
+  i.item.mean <- mean(m[,item], na.rm=T)
+  # print(i.item.mean)
+
+  # on sort nos predictions en utilisant la formule apprise dans le cours
+  res <- predict.vote(t(m[,i.distance.item]), i.item.mean, item, rowMeans(t(m[,i.distance.item]), na.rm = T), cosinus.vm(m[,item], m[,i.distance.item]))
+
+  return(res)
+}
+
+# Proportion de références de test (ici : 10%)
+cross.validation.factor <- 0.1
+
+# Nombre d'articles dans la base
+nb.articles <- dim(m)[1]
+
+# Sélection aléatoire des indices des références de la base de test
+test.refs.row.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+test.refs.col.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+
+# Séparation de la base d'entraînement et de la base de test
+m.test <- m[test.refs.row.indices, test.refs.col.indices]
+m.training <- m
+m.training[test.refs.row.indices, test.refs.col.indices] <- NA
+
+# print(predict(as.matrix(m.training), test.refs.col.indices[1]))
+print(sapply(test.refs.col.indices, function(x) predict(as.matrix(m.training), x)))
+
+# print("Test: ")
+# m.test
+#
+# print("Training:")
+# m.training
+
+
+
+# cos.ratings <- sapply(test.articles.indices, function(x) cosinus.vm(m[x,], m[, -x]))
+# cos.ratings

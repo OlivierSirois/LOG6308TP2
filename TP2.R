@@ -5,28 +5,28 @@ d <- 0.85
 pr <- rep(1, dim(m)[1])
 
 ## Cosinus entre un vecteur v et chaque colonne dela matrice m
-cosinus.vm <- function(v,m) {
-  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
-  m[is.na(m)] <- 0
-  v[is.na(v)] <- 0 ;
-  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
-  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
-}
-
-#Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
-corr.vm <- function(v,m) {
-  # on centre les valeurs de la matrice m en fonction de la moyenne, on la renomme m.centre
-  v.i <- rowMeans(m[,], na.rm=T)
-  # on enleve les NA
-  m[is.na(m)] <- 0
-  m.centre <- m - v.i
-  # on centre le vecteur v en fonction de sa moyenne
-  v.index <- v
-  v.index[is.na(v)] <- 0
-  v.index <- v.index - mean(v, na.rm=T)
-  # on retourne ensuite un vecteur correspondant entre le vecteur v et sa correlation avec chaque rangers de m
-  return( (v.index%*%t(m.centre))/(sqrt(sum(v.index^2) * rowSums(m.centre^2))))
-}
+# cosinus.vm <- function(v,m) {
+#   # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+#   m[is.na(m)] <- 0
+#   v[is.na(v)] <- 0 ;
+#   # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+#   (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
+# }
+#
+# #Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
+# corr.vm <- function(v,m) {
+#   # on centre les valeurs de la matrice m en fonction de la moyenne, on la renomme m.centre
+#   v.i <- rowMeans(m[,], na.rm=T)
+#   # on enleve les NA
+#   m[is.na(m)] <- 0
+#   m.centre <- m - v.i
+#   # on centre le vecteur v en fonction de sa moyenne
+#   v.index <- v
+#   v.index[is.na(v)] <- 0
+#   v.index <- v.index - mean(v, na.rm=T)
+#   # on retourne ensuite un vecteur correspondant entre le vecteur v et sa correlation avec chaque rangers de m
+#   return( (v.index%*%t(m.centre))/(sqrt(sum(v.index^2) * rowSums(m.centre^2))))
+# }
 
 #cette fonction fais la somme de toutes les puissance de la matrice m allant de 0 jusqu'a n
 sum.powers.matrix <- function(m, n) {
@@ -141,11 +141,28 @@ corr.vm <- function(v,m) {
 }
 
 cosinus.vm <- function(v,m) {
-# On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
   m[is.na(m)] <- 0
   v[is.na(v)] <- 0 ;
-# On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
-  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
+  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  denom <- sqrt(colSums(m^2)) * sqrt(sum(v^2))
+  if (denom == 0)
+  {
+      if (colSums(m^2) == sum(v^2))
+      {
+          res <- 1
+      }
+      else
+      {
+          res <- 0
+      }
+  }
+  else
+  {
+      res <- (v %*% m) / denom
+  }
+
+  return(res)
 }
 
 min.nindex <- function(m, n=11) {
@@ -195,7 +212,15 @@ predict.vote <- function(m, useravg, item, user.avg, cor){ # pour utilisateur-ut
   cor.mod <- cor
   correction.fact <- 1/sum(abs(cor[-which(is.na(m.mod))]))
   v1 <- m.mod[-which(is.na(m.mod))] - user.avg.mod[-which(is.na(m.mod))]
-  predicted.voted <- useravg + correction.fact*  sum(cor.mod[-which(is.na(m.mod))]*v1)
+  if (correction.fact == Inf)
+  {
+      predicted.voted <- useravg
+  }
+  else
+  {
+      predicted.voted <- useravg + correction.fact*  sum(cor.mod[-which(is.na(m.mod))]*v1)
+  }
+
   return(abs(predicted.voted))
 }
 
@@ -212,7 +237,7 @@ predict <- function(m, item) {
 
 
   # Calcul des 20 voisins les plus proches
-  n.voisins <- 20 + 1
+  n.voisins <- 50 + 1
   votes.communs <- colSums((m[,item] * m) > 0, na.rm=T) # nombre de votes communs
   #print(which(votes.communs==0))
   i.distance.item <- min.nindex(distance.item, n.voisins)
@@ -246,7 +271,9 @@ m.training <- m
 m.training[test.refs.row.indices, test.refs.col.indices] <- NA
 
 # print(predict(as.matrix(m.training), test.refs.col.indices[1]))
-print(sapply(test.refs.col.indices, function(x) predict(as.matrix(m.training), x)))
+res <- sapply(test.refs.col.indices, function(x) predict(t(as.matrix(m.training)), x))
+print(res)
+print(as.vector(m.test))
 
 # print("Test: ")
 # m.test

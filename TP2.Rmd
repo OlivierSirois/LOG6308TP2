@@ -10,7 +10,10 @@ output:
 library("expm")
 ```
 
-# Basic PageRank
+#PageRank
+##
+Olivier Sirois, 1626107 et
+Alexandre Bento, 1919643
 
 ## Functions
 
@@ -166,7 +169,7 @@ d <- 0.85
 3 PageRank iterations:
 
 ```{r}
-
+d <- 0.85
 pr <- page.rank(m, d,  pr)
 print(pr)
 pr <- page.rank(m, d,  pr)

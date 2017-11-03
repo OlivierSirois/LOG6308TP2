@@ -29,7 +29,7 @@ sum.powers.matrix <- function(m, n) {
   powers <- c(1:n)
   res <- Reduce('+', lapply(powers, function(x) m %^% x))
   res[res > 1] <- 1
-  
+
   return(res)
 }
 ```
@@ -62,7 +62,7 @@ Parameters:
 
 
 ```{r}
-#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une 
+#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une
 # article non référencé) on remplace ensuite la valeur qui sera égale a Inf, par un 0
 page.rank <- function(m, d, pr){
   denum <- (pr/colSums(m))
@@ -103,14 +103,14 @@ cosinus.vm <- function(v,m) {
   m[is.na(m)] <- 0
   v[is.na(v)] <- 0 ;
   # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
-  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2))) 
+  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
 }
 ```
 ###page.rank.until.stab
 This function calls an iteration of page rank until our rankings are stabilized. Stabilized meaning that the mean error between our last two iterations of page rank is less then 0.0001
 
 ```{r}
-# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001 
+# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilité. lorsque l'erreur moyenne absolue est moins de .0001
 page.rank.until.stab <- function(m, d, pr){
   pr.next <- page.rank(m, d, pr)
   while(abs(mean(pr.next-pr)) > 0.0001){
@@ -155,6 +155,14 @@ pr <- rep(1,3)
 print(pr)
 ```
 
+Damping factor:
+
+```{r}
+
+d <- 0.85
+
+```
+
 3 PageRank iterations:
 
 ```{r}
@@ -191,9 +199,9 @@ We're calculating our extended domain, which is $S'$ and defined as the domain o
 #es article sont référencés par notre origine. Pour faire cela,
 #on regarde ceux qui on une valeur positive dans notre matrice référentielle
 S <- which(m["422908",]==1)
-# Pour le domaine S prime, nous voulons aussi rajouter les références des références. 
+# Pour le domaine S prime, nous voulons aussi rajouter les références des références.
 #Pour faire cela, nous faisont que prendre la somme des deux première puissance de la
-# matrice référentielle. C'est a dire, la matrice référentielle elle-même 
+# matrice référentielle. C'est a dire, la matrice référentielle elle-même
 #et la deuxième puissance.
 m.prime <- sum.powers.matrix(m,2)
 
@@ -231,7 +239,7 @@ S.prime.rankings <- pr[S.prime]
 #On crée un dataframe avec nos données
 S.dat <- data.frame(S.rankings, S)
 S.dat$article = rownames(S.dat)
-#même chose pour le domaine S prime 
+#même chose pour le domaine S prime
 S.prime.dat <- data.frame(S.prime.rankings, S.prime)
 S.prime.dat$article = rownames(S.prime.dat)
 print.data.frame(S.prime.dat)
@@ -296,8 +304,128 @@ print.data.frame(df.best.cos)
 print.data.frame(df.best.corr)
 ```
 
+#Question 3
+
+Here, we will use the cross-validation method to evaluate the predictions resulting
+from the item-item approach.
+
+Functions used for this approach:
+
+```{r}
+
+# Calcul du cosinus entre un vecteur et les colonnes d'une matrice.
+# Méthode adaptée pour résoudre les problèmes liés aux colonnes remplies de 0.
+cosinus.vm <- function(v,m) {
+  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  m[is.na(m)] <- 0
+  v[is.na(v)] <- 0 ;
+  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  denom <- sqrt(colSums(m^2)) * sqrt(sum(v^2))
+  denom[denom == 0] <- 1
+  res <- (v %*% m) / denom
+
+  return(res)
+}
+
+# Retourne les indices des n-premières valeurs du vecteur (ordre décroissant).
+max.nindex <- function(m, n=5) {
+    i <- order(m, decreasing=TRUE)
+    return(i[1:n])
+}
+
+# Prédiction d'une valeur dans la matrice de références (approche item-item).
+predict.value <- function(refs, user, item)
+{
+    # Moyenne de chaque item
+    items.avg <- colMeans(refs, na.rm=T)
+
+    # Similarité entre l'item étudié et les autres items
+    items.similarity <- cosinus.vm(refs[,item], refs)
+
+    # Sélection des 20 premiers voisins en fonction de leur similarité
+    # (la distance n'était pas pertinente ici, vu le nombre de 0 dans la matrice
+    # de références)
+    n.voisins <- 20 + 1
+    most.similar <- max.nindex(items.similarity, n.voisins)[-item]
+
+    # Calcul du facteur de correction (inverse de la somme des similarités).
+    # Prise en compte du cas où cette somme est nulle.
+    correction.factor <- 1 / sum(items.similarity[most.similar])
+    if (correction.factor == Inf)
+    {
+        correction.factor <- 1
+    }
+
+    # Prédiction de la valeur
+    value <- items.avg[item] + correction.factor *
+             sum(sapply(most.similar, function(x)
+                items.similarity[x] * (refs[user, x] - items.avg[x])), na.rm=T)
+
+    return(value)
+}
+
+# Calcul de la RMSE entre une matrice de résultats et une matrice cible
+rmse <- function(results, target)
+{
+    res <- sqrt(sum(abs(results^2 - target^2)) / dim(target)[1]^2)
+
+    return(res)
+}
+
+```
+
+Creation of the test database:
+
+```{r}
+
+# Proportion de références de test (ici : 5%, les calculs sont vraiment longs
+# pour 10%)
+cross.validation.factor <- 0.05
+
+# Nombre d'articles dans la base
+nb.articles <- dim(m)[1]
+
+# Sélection aléatoire des indices des références de la base de test
+test.refs.row.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+test.refs.col.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+
+# Séparation de la base d'entraînement et de la base de test
+m.test <- m[test.refs.row.indices, test.refs.col.indices]
+m.training <- m
+m.training[test.refs.row.indices, test.refs.col.indices] <- NA
+
+```
+
+Prediction of the values from the test database (the results matrix won't be
+desplayed, since it is very large):
+
+```{r}
+
+results <-sapply(test.refs.row.indices, function(x)
+            sapply(test.refs.col.indices, function(y)
+                predict.value(as.matrix(m.training), x, y)))
+
+```
+
+Computation of the RMSE of these predictions:
+
+```{r}
+
+cross.validation.rmse <- rmse(as.matrix(results), as.matrix(m.test))
+
+```
+
+```{r echo = FALSE}
+
+print(cross.validation.rmse)
+
+```
+
+It is hard to evaluate the performance of the item-item approach in this situation,
+since the references matrix has a very low number of 1 values, compare to zeros.
+
 #Interpretation
-Judging from the recommendation of all our possible scenarios. We can safely assume that all of our recommendations are admissible. Admissible being that they are related to the original article in question. 
+Judging from the recommendation of all our possible scenarios. We can safely assume that all of our recommendations are admissible. Admissible being that they are related to the original article in question.
 
 We can see that the article 155792 is one of the few that figures in all our recommendations. It is recommended 3rd by both our item-item approaches and is recommended by the two domains of the PageRanks (global and local) approaches. This articles is about logics and models of real time, while the original article is about symbolic model checking for real-time systems. This is a very good recommendation.
 
@@ -316,11 +444,3 @@ Our item-item approach gives recommendations that are very close in terms of euc
 the Page Rank approach gives a much more personnalized approach. the page rank algorithm is inherently more axed toward the relations between the articles thus making it more personalized then the item-item approach. One of the key factors of the Page Rank is the establishment of the domain. In our experiment, we used $S$ and $S'$  as the domains for our algoriths. Both of these domains yielded great results (Results that are very similar to the item-item approach), but $S'$ yielded more interesting results. The top recommendation for $S'$ isn't closely related to the original article itself, but it explains one particular part of the article in better detail. This makes it a better recommendation by nature then most recommendations given by $S$ and the item-item approaches.
 
 Although we concluded that we had good recommendations, it is ultimately depending on the user. What we consider a good recommendation might be considered a bad recommendation by a user who is looking into writing his research paper while our recommendation is a perfect recommendation for someone who is looking for some light reading. It depends on what the user needs.
-
-
-
-
-
-
-
-

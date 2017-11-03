@@ -10,7 +10,7 @@ cosinus.vm <- function(v,m) {
   m[is.na(m)] <- 0
   v[is.na(v)] <- 0 ;
   # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
-  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2))) 
+  (v %*% m)/(sqrt(colSums(m^2)) * sqrt(sum(v^2)))
 }
 
 #Correlation entre la rangee v (v = index) et chaque colonne de la matrice m
@@ -33,11 +33,11 @@ sum.powers.matrix <- function(m, n) {
   powers <- c(1:n)
   res <- Reduce('+', lapply(powers, function(x) m %^% x))
   res[res > 1] <- 1
-  
+
   return(res)
 }
 
-#on enleve toutes les autoreferences dans la matrice referentielle. Ce probleme survient lorsqu'on fait une addition des différentes puissances de matrices. 
+#on enleve toutes les autoreferences dans la matrice referentielle. Ce probleme survient lorsqu'on fait une addition des différentes puissances de matrices.
 #ce comportement est a évité car sa donne de l'importance artificielle à notre cible lorsqu'elle est référencé elle même par sa référence.
 remove.autoreferences <- function(m) {
   res <- m
@@ -45,7 +45,7 @@ remove.autoreferences <- function(m) {
   return (res)
 }
 
-# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001 
+# Cette fonction exécute l'algorithme PageRank jusqu'à ce que c'est valeurs soit stabilisés. On définie une stabilit. lorsque l'erreur moyenne absolue est moins de .0001
 page.rank.until.stab <- function(m, d, pr){
   pr.next <- page.rank(m, d, pr)
   while(abs(mean(pr.next-pr)) > 0.0001){
@@ -55,7 +55,7 @@ page.rank.until.stab <- function(m, d, pr){
   return (pr)
 }
 
-#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une 
+#Cette fonction fait une itérations de l'algorithme page rank. Nous avons ajouter une petite modifications dans le cas ou la somme d'un colonne est de 0 (c'est à dire, une
 # article non référencé) on remplace ensuite la valeur qui sera égale a Inf, par un 0
 page.rank <- function(m, d, pr){
   denum <- (pr/colSums(m))
@@ -68,13 +68,13 @@ page.rank <- function(m, d, pr){
 pagerank.iteration <- function(refs, n, d, pr) {
   # Number of articles
   n.articles <- dim(refs)[1]
-  
+
   # n-level references
   m <- sum.powers.matrix(refs, n)
-  
+
   # Compute PageRank
   pr.res <- (1-d)/n.articles + (d * (m %*% (pr/colSums(m))))
-  
+
   return(pr.res)
 }
 
@@ -128,7 +128,7 @@ S.prime.loc.best <- S.prime.loc.dat %>% select(pr.S.prime, article) %>% arrange(
 # on effectue les meme calcules pour PageRank de maniere globale
 S.dat <- data.frame(S.rankings, S)
 S.dat$article = rownames(S.dat)
-#même chose pour le domaine S prime 
+#même chose pour le domaine S prime
 S.prime.dat <- data.frame(S.prime.rankings, S.prime)
 S.prime.dat$article = rownames(S.prime.dat)
 #on effectue un trie sur nos valeurs, on sort celles qui sont les plus hautes en premier
@@ -163,3 +163,90 @@ df.best.corr <- df.corr %>% select(corr, article) %>% arrange(desc(corr, arr.ind
 #print.data.frame(S.prime.best)
 #print.data.frame(S.best)
 #print(cl)
+
+# ---------------------------- Validation croiée -------------------------------
+
+# Calcul du cosinus entre un vecteur et les colonnes d'une matrice.
+# Méthode adaptée pour résoudre les problèmes liés aux colonnes remplies de 0.
+cosinus.vm <- function(v,m) {
+  # On on met tous nos valeurs de NA a 0, sinon on va avoir des problemes de calculs avec des matrices sparse
+  m[is.na(m)] <- 0
+  v[is.na(v)] <- 0 ;
+  # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
+  denom <- sqrt(colSums(m^2)) * sqrt(sum(v^2))
+  denom[denom == 0] <- 1
+  res <- (v %*% m) / denom
+
+  return(res)
+}
+
+# Retourne les indices des n-premières valeurs du vecteur (ordre décroissant).
+max.nindex <- function(m, n=5) {
+    i <- order(m, decreasing=TRUE)
+    return(i[1:n])
+}
+
+# Prédiction d'une valeur dans la matrice de références (approche item-item).
+predict.value <- function(refs, user, item)
+{
+    # Moyenne de chaque item
+    items.avg <- colMeans(refs, na.rm=T)
+
+    # Similarité entre l'item étudié et les autres items
+    items.similarity <- cosinus.vm(refs[,item], refs)
+
+    # Sélection des 20 premiers voisins en fonction de leur similarité
+    # (la distance n'était pas pertinente ici, vu le nombre de 0 dans la matrice
+    # de références)
+    n.voisins <- 20 + 1
+    most.similar <- max.nindex(items.similarity, n.voisins)[-item]
+
+    # Calcul du facteur de correction (inverse de la somme des similarités).
+    # Prise en compte du cas où cette somme est nulle.
+    correction.factor <- 1 / sum(items.similarity[most.similar])
+    if (correction.factor == Inf)
+    {
+        correction.factor <- 1
+    }
+
+    # Prédiction de la valeur
+    value <- items.avg[item] + correction.factor *
+             sum(sapply(most.similar, function(x)
+                items.similarity[x] * (refs[user, x] - items.avg[x])), na.rm=T)
+
+    return(value)
+}
+
+# Calcul de la RMSE entre une matrice de résultats et une matrice cible
+rmse <- function(results, target)
+{
+    res <- sqrt(sum(abs(results^2 - target^2)) / dim(target)[1]^2)
+
+    return(res)
+}
+
+# Proportion de références de test (ici : 5%, les calculs sont vraiment longs
+# pour 10%)
+cross.validation.factor <- 0.05
+
+# Nombre d'articles dans la base
+nb.articles <- dim(m)[1]
+
+# Sélection aléatoire des indices des références de la base de test
+test.refs.row.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+test.refs.col.indices <- sample(1:nb.articles, round(cross.validation.factor * nb.articles))
+
+# Séparation de la base d'entraînement et de la base de test
+m.test <- m[test.refs.row.indices, test.refs.col.indices]
+m.training <- m
+m.training[test.refs.row.indices, test.refs.col.indices] <- NA
+
+results <-sapply(test.refs.row.indices, function(x)
+            sapply(test.refs.col.indices, function(y)
+                predict.value(as.matrix(m.training), x, y)))
+
+print(results)
+
+cross.validation.rmse <- rmse(as.matrix(results), as.matrix(m.test))
+
+print(cross.validation.rmse)

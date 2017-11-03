@@ -146,21 +146,25 @@ cosinus.vm <- function(v,m) {
   v[is.na(v)] <- 0 ;
   # On calcule le cosinus entre le vecteur V et les colonnes de la matrice m en utilisant la formule vu en classe
   denom <- sqrt(colSums(m^2)) * sqrt(sum(v^2))
-  if (denom == 0)
-  {
-      if (colSums(m^2) == sum(v^2))
-      {
-          res <- 1
-      }
-      else
-      {
-          res <- 0
-      }
-  }
-  else
-  {
-      res <- (v %*% m) / denom
-  }
+  denom[denom == 0] <- 1
+  res <- (v %*% m) / denom
+  # if (denom == 0)
+  # {
+  #     if (colSums(m^2) == sum(v^2))
+  #     {
+  #         res <- 1
+  #     }
+  #     else
+  #     {
+  #         res <- 0
+  #     }
+  # }
+  # else
+  # {
+  #
+  # }
+
+
 
   return(res)
 }
@@ -168,6 +172,11 @@ cosinus.vm <- function(v,m) {
 min.nindex <- function(m, n=11) {
   i <- order(m)
   return(i[1:n])
+}
+
+max.nindex <- function(m, n=5) {
+    i <- order(m, decreasing=TRUE)
+    return(i[1:n])
 }
 
 # predict <- function(refs, article) {
@@ -206,57 +215,40 @@ min.nindex <- function(m, n=11) {
   # return(res)
 # }
 
-predict.vote <- function(m, useravg, item, user.avg, cor){ # pour utilisateur-utilisateur
-  m.mod <- m[,item]
-  user.avg.mod <- user.avg
-  cor.mod <- cor
-  correction.fact <- 1/sum(abs(cor[-which(is.na(m.mod))]))
-  v1 <- m.mod[-which(is.na(m.mod))] - user.avg.mod[-which(is.na(m.mod))]
-  if (correction.fact == Inf)
-  {
-      predicted.voted <- useravg
-  }
-  else
-  {
-      predicted.voted <- useravg + correction.fact*  sum(cor.mod[-which(is.na(m.mod))]*v1)
-  }
 
-  return(abs(predicted.voted))
+
+predict.value <- function(refs, user, item)
+{
+    items.avg <- colMeans(refs, na.rm=T)
+    # print(items.avg)
+    items.similarity <- cosinus.vm(refs[,item], refs)
+    distance.item <- sqrt(colSums(refs[,item] - refs, na.rm=T)^2)
+    n.voisins <- 20 + 1
+    most.similar <- max.nindex(items.similarity, n.voisins)[-item]
+
+    correction.factor <- 1 / sum(items.similarity[most.similar])
+    if (correction.factor == Inf)
+    {
+        correction.factor <- 1
+    }
+
+    value <- items.avg[item] + correction.factor *
+             sum(sapply(most.similar, function(x)
+                items.similarity[x] * (refs[user, x] - items.avg[x])), na.rm=T)
+
+    return(value)
 }
 
-predict <- function(m, item) {
+rmse <- function(results, target)
+{
+    # print(results^2 - target^2)
+    res <- sqrt(sum(abs(results^2 - target^2)) / dim(target)[1]^2)
 
-  # Vecteur contenant les indices des utilisateurs n'ayant pas indiqué de vote
-  # pour Star Trek
-
-  users.no.vote.item = which(m[,item] %in% NA)
-  # print(users.no.vote.item)
-
-  # Vecteur contenant les distances entre Star Trek et les autres films
-  distance.item <- sqrt(colSums(m[,item] - m, na.rm=T)^2)
-
-
-  # Calcul des 20 voisins les plus proches
-  n.voisins <- 50 + 1
-  votes.communs <- colSums((m[,item] * m) > 0, na.rm=T) # nombre de votes communs
-  #print(which(votes.communs==0))
-  i.distance.item <- min.nindex(distance.item, n.voisins)
-  # votes.communs[i.distance.450]
-
-  i.distance.item <- i.distance.item[i.distance.item != item]
-  # Moyenne des votes par film (sans les NA)
-  i.mean.item <- matrix(colMeans(m[], na.rm=TRUE))
-  i.item.mean <- mean(m[,item], na.rm=T)
-  # print(i.item.mean)
-
-  # on sort nos predictions en utilisant la formule apprise dans le cours
-  res <- predict.vote(t(m[,i.distance.item]), i.item.mean, item, rowMeans(t(m[,i.distance.item]), na.rm = T), cosinus.vm(m[,item], m[,i.distance.item]))
-
-  return(res)
+    return(res)
 }
 
 # Proportion de références de test (ici : 10%)
-cross.validation.factor <- 0.1
+cross.validation.factor <- 0.05
 
 # Nombre d'articles dans la base
 nb.articles <- dim(m)[1]
@@ -271,9 +263,14 @@ m.training <- m
 m.training[test.refs.row.indices, test.refs.col.indices] <- NA
 
 # print(predict(as.matrix(m.training), test.refs.col.indices[1]))
-res <- sapply(test.refs.col.indices, function(x) predict(t(as.matrix(m.training)), x))
-print(res)
-print(as.vector(m.test))
+# predict.value(as.matrix(m.training), test.refs.row.indices[1], test.refs.col.indices[1])
+results <-sapply(test.refs.row.indices, function(x)
+            sapply(test.refs.col.indices, function(y)
+                predict.value(as.matrix(m.training), x, y)))
+
+print(rmse(as.matrix(results), as.matrix(m.test)))
+
+# print(m.test)
 
 # print("Test: ")
 # m.test
